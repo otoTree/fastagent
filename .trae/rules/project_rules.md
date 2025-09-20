@@ -18,7 +18,7 @@ export https_proxy=http://127.0.0.1:7897 http_proxy=http://127.0.0.1:7897 all_pr
 
 后端使用express+zod
 
-前端使用nextjs+shadcn-ui
+前端使用nextjs+shadcn-ui+zustand
 
 插件使用fastgpt-plugin
 
