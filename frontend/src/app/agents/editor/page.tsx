@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Save, ArrowLeft, Play, Settings, FileText, Eye, Globe, Lock, Archive } from "lucide-react";
@@ -12,10 +12,12 @@ import { AgentPreview } from "@/components/agents/AgentPreview";
 import { AgentSidebar } from "@/components/agents/AgentSidebar";
 import api, { agentApi } from "@/lib/api";
 import { toast } from "sonner";
+import { useAuthStore } from "@/stores/auth";
 
-const AgentEditor = () => {
+const AgentEditorContent = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { isAuthenticated, isLoading: authLoading } = useAuthStore();
   const agentId = searchParams.get("id");
   const isEditing = !!agentId;
 
@@ -36,12 +38,20 @@ const AgentEditor = () => {
   const [publishing, setPublishing] = useState(false);
   const [activeTab, setActiveTab] = useState("basic");
 
+  // 检查认证状态
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push("/auth/login");
+      return;
+    }
+  }, [isAuthenticated, authLoading, router]);
+
   // 如果是编辑模式，加载现有数据
   useEffect(() => {
-    if (isEditing && agentId) {
+    if (isAuthenticated && isEditing && agentId) {
       loadAgentData(agentId);
     }
-  }, [isEditing, agentId]);
+  }, [isAuthenticated, isEditing, agentId]);
 
   const loadAgentData = async (id: string) => {
     setLoading(true);
@@ -250,6 +260,23 @@ const AgentEditor = () => {
 
   const statusInfo = getPublishStatusInfo();
 
+  // 如果正在加载认证状态，显示加载界面
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-slate-600">加载中...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 如果未认证，不渲染内容（会被重定向到登录页）
+  if (!isAuthenticated) {
+    return null;
+  }
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-6xl">
       {/* 头部导航 */}
@@ -291,7 +318,7 @@ const AgentEditor = () => {
                   variant="outline"
                   size="sm"
                   onClick={handlePublish}
-                  disabled={publishing || !formData.name || !formData.description || !formData.prompt}
+                  // disabled={publishing || !formData.name || !formData.description || !formData.prompt}
                   className="flex items-center gap-2"
                 >
                   <Globe className="h-4 w-4" />
@@ -329,7 +356,7 @@ const AgentEditor = () => {
                   variant="outline"
                   size="sm"
                   onClick={handlePublish}
-                  disabled={publishing || !agent.name || !agent.description || !agent.prompt}
+                  // disabled={publishing || !agent.name || !agent.description || !agent.prompt}
                   className="flex items-center gap-2"
                 >
                   <Globe className="h-4 w-4" />
@@ -427,6 +454,21 @@ const AgentEditor = () => {
         </div>
       </div>
     </div>
+  );
+};
+
+const AgentEditor = () => {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-2 text-slate-600">加载中...</p>
+        </div>
+      </div>
+    }>
+      <AgentEditorContent />
+    </Suspense>
   );
 };
 

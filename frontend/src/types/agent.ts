@@ -51,6 +51,7 @@ export interface CreateAgentFormData {
   maxTokens: number;
   isPublic: boolean;
   tags: string;
+  capabilities?: string[];
 }
 
 export interface AgentCardProps {

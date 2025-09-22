@@ -1,0 +1,180 @@
+import mongoose, { Document, Schema } from 'mongoose';
+import { z } from 'zod';
+
+// Zod validation schemas
+export const CreateWebhookTriggerSchema = z.object({
+  name: z.string().min(1, 'Webhook trigger name is required').max(100, 'Name must be less than 100 characters'),
+  description: z.string().max(500, 'Description must be less than 500 characters').optional(),
+  agentId: z.string().min(1, 'Agent ID is required'),
+  apiKey: z.string().min(8, 'API key must be at least 8 characters').optional(),
+  httpMethod: z.enum(['GET', 'POST', 'PUT', 'DELETE']).default('POST'),
+  headers: z.record(z.string()).optional(),
+  responseFormat: z.enum(['json', 'text', 'html']).default('json'),
+  timeout: z.number().min(1000).max(30000).default(10000), // 1-30 seconds
+  retryCount: z.number().min(0).max(5).default(3),
+  retryDelay: z.number().min(1000).max(60000).default(5000), // 1-60 seconds
+  isActive: z.boolean().default(true),
+});
+
+export const UpdateWebhookTriggerSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  description: z.string().max(500).optional(),
+  agentId: z.string().min(1).optional(),
+  apiKey: z.string().min(8).optional(),
+  httpMethod: z.enum(['GET', 'POST', 'PUT', 'DELETE']).optional(),
+  headers: z.record(z.string()).optional(),
+  responseFormat: z.enum(['json', 'text', 'html']).optional(),
+  timeout: z.number().min(1000).max(30000).optional(),
+  retryCount: z.number().min(0).max(5).optional(),
+  retryDelay: z.number().min(1000).max(60000).optional(),
+  isActive: z.boolean().optional(),
+});
+
+// TypeScript interface
+export interface IWebhookTrigger extends Document {
+  name: string;
+  description?: string;
+  agentId: mongoose.Types.ObjectId;
+  webhookUrl: string;
+  apiKey: string;
+  isActive: boolean;
+  httpMethod: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  headers?: Record<string, string>;
+  responseFormat: 'json' | 'text' | 'html';
+  timeout: number;
+  retryCount: number;
+  retryDelay: number;
+  lastTriggeredAt?: Date;
+  triggerCount: number;
+  owner: mongoose.Types.ObjectId;
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Methods
+  incrementTriggerCount(): Promise<IWebhookTrigger>;
+  updateLastTriggered(): Promise<IWebhookTrigger>;
+  generateWebhookUrl(): string;
+}
+
+// Mongoose schema
+const webhookTriggerSchema = new Schema<IWebhookTrigger>({
+  name: {
+    type: String,
+    required: true,
+    trim: true,
+    maxlength: 100,
+  },
+  description: {
+    type: String,
+    maxlength: 500,
+    trim: true,
+  },
+  agentId: {
+    type: Schema.Types.ObjectId,
+    ref: 'Agent',
+    required: true,
+  },
+  webhookUrl: {
+    type: String,
+    required: true,
+  },
+  apiKey: {
+    type: String,
+    required: true,
+  },
+  isActive: {
+    type: Boolean,
+    default: true,
+  },
+  httpMethod: {
+    type: String,
+    enum: ['GET', 'POST', 'PUT', 'DELETE'],
+    default: 'POST',
+  },
+  headers: {
+    type: Map,
+    of: String,
+    default: {},
+  },
+  responseFormat: {
+    type: String,
+    enum: ['json', 'text', 'html'],
+    default: 'json',
+  },
+  timeout: {
+    type: Number,
+    min: 1000,
+    max: 30000,
+    default: 10000,
+  },
+  retryCount: {
+    type: Number,
+    min: 0,
+    max: 5,
+    default: 3,
+  },
+  retryDelay: {
+    type: Number,
+    min: 1000,
+    max: 60000,
+    default: 5000,
+  },
+  lastTriggeredAt: {
+    type: Date,
+  },
+  triggerCount: {
+    type: Number,
+    default: 0,
+  },
+  owner: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+  },
+}, {
+  timestamps: true,
+});
+
+// Indexes for better query performance
+webhookTriggerSchema.index({ owner: 1, createdAt: -1 });
+webhookTriggerSchema.index({ agentId: 1 });
+webhookTriggerSchema.index({ isActive: 1 });
+webhookTriggerSchema.index({ webhookUrl: 1 }, { unique: true });
+
+// Pre-save middleware to generate webhook URL
+webhookTriggerSchema.pre('save', function(this: IWebhookTrigger, next) {
+  if (this.isNew && !this.webhookUrl) {
+    // Generate a temporary webhook URL that will be updated after save
+    this.webhookUrl = 'temp-url';
+  }
+  next();
+});
+
+// Post-save hook to update webhook URL with actual ID
+webhookTriggerSchema.post('save', async function(this: IWebhookTrigger) {
+  if (this.webhookUrl === 'temp-url') {
+    this.webhookUrl = this.generateWebhookUrl();
+    await this.updateOne({ webhookUrl: this.webhookUrl });
+  }
+});
+
+// Method to increment trigger count
+webhookTriggerSchema.methods.incrementTriggerCount = function(this: IWebhookTrigger) {
+  this.triggerCount += 1;
+  this.lastTriggeredAt = new Date();
+  return this.save();
+};
+
+// Method to update last triggered time
+webhookTriggerSchema.methods.updateLastTriggered = function(this: IWebhookTrigger) {
+  this.lastTriggeredAt = new Date();
+  return this.save();
+};
+
+// Method to generate webhook URL
+webhookTriggerSchema.methods.generateWebhookUrl = function(this: IWebhookTrigger) {
+  const baseUrl = process.env.API_BASE_URL || 'http://localhost:4001';
+  return `${baseUrl}/api/webhooks/trigger/${this._id}`;
+};
+
+export const WebhookTrigger = mongoose.model<IWebhookTrigger>('WebhookTrigger', webhookTriggerSchema);

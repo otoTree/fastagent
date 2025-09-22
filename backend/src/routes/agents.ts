@@ -40,7 +40,7 @@ router.get('/public', async (req: Request, res: Response) => {
       Agent.countDocuments(query),
     ]);
 
-    res.json({
+    return res.json({
       success: true,
       data: {
         agents,
@@ -48,69 +48,53 @@ router.get('/public', async (req: Request, res: Response) => {
           page,
           limit,
           total,
-          pages: Math.ceil(total / limit),
-        },
-      },
+          pages: Math.ceil(total / limit)
+        }
+      }
     });
   } catch (error) {
-    console.error('Get public agents error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Failed to fetch public agents',
+      error: { message: 'Internal server error' }
     });
   }
 });
 
-// Get published agents for discovery (public endpoint)
+// Get public agents for discovery (no auth required)
 router.get('/public/discover', async (req: Request, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 20;
-    const search = req.query.search as string;
-    const tags = req.query.tags as string | string[];
+    const limit = parseInt(req.query.limit as string) || 6;
     
-    const query: any = { 
-      publishStatus: PublishStatus.PUBLISHED,
-      isPublic: true 
-    };
-    
-    if (search) {
-      query.$text = { $search: search };
-    }
-    
-    if (tags) {
-      const tagArray = Array.isArray(tags) ? tags : tags.split(',').map(tag => tag.trim());
-      query.tags = { $in: tagArray };
-    }
-    
-    const skip = (page - 1) * limit;
-    
-    const [agents, total] = await Promise.all([
-      Agent.find(query)
-        .populate('owner', 'username email')
-        .sort({ usageCount: -1, publishedAt: -1 })
-        .skip(skip)
-        .limit(limit),
-      Agent.countDocuments(query),
+    // Get featured agents (most used or recently published)
+    const featuredAgents = await Agent.find({
+      isPublic: true,
+      publishStatus: PublishStatus.PUBLISHED
+    })
+      .populate('owner', 'username email')
+      .sort({ usageCount: -1, publishedAt: -1 })
+      .limit(limit);
+
+    // Get trending tags
+    const trendingTags = await Agent.aggregate([
+      { $match: { isPublic: true, publishStatus: PublishStatus.PUBLISHED } },
+      { $unwind: '$tags' },
+      { $group: { _id: '$tags', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 },
+      { $project: { tag: '$_id', count: 1, _id: 0 } }
     ]);
 
-    res.json({
+    return res.json({
       success: true,
       data: {
-        agents,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit),
-        },
-      },
+        featuredAgents,
+        trendingTags
+      }
     });
   } catch (error) {
-    console.error('Discover agents error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Failed to discover agents',
+      error: { message: 'Internal server error' }
     });
   }
 });
@@ -121,40 +105,33 @@ router.use(authenticate);
 // Get all agents for the authenticated user
 router.get('/', async (req: Request, res: Response) => {
   try {
-    const userId = req.user?._id;
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
     const search = req.query.search as string;
-    const tags = req.query.tags as string;
     const status = req.query.status as string;
 
-    // Build query
-    const query: any = { owner: userId };
+    const query: any = { owner: req.user!._id };
     
     if (search) {
       query.$text = { $search: search };
     }
     
-    if (tags) {
-      const tagArray = tags.split(',').map(tag => tag.trim());
-      query.tags = { $in: tagArray };
-    }
-
-    if (status && Object.values(PublishStatus).includes(status as PublishStatus)) {
+    if (status) {
       query.publishStatus = status;
     }
 
-    // Execute query with pagination
     const skip = (page - 1) * limit;
-    const agents = await Agent.find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit)
-      .populate('owner', 'username email');
+    
+    const [agents, total] = await Promise.all([
+      Agent.find(query)
+        .populate('owner', 'username email')
+        .sort({ updatedAt: -1 })
+        .skip(skip)
+        .limit(limit),
+      Agent.countDocuments(query),
+    ]);
 
-    const total = await Agent.countDocuments(query);
-
-    res.json({
+    return res.json({
       success: true,
       data: {
         agents,
@@ -162,87 +139,76 @@ router.get('/', async (req: Request, res: Response) => {
           page,
           limit,
           total,
-          pages: Math.ceil(total / limit),
-        },
-      },
+          pages: Math.ceil(total / limit)
+        }
+      }
     });
   } catch (error) {
-    console.error('Get agents error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Failed to fetch agents',
+      error: { message: 'Internal server error' }
     });
   }
 });
 
-// Get single agent by ID
+// Get agent by ID
 router.get('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const userId = req.user?._id as string;
+    const agent = await Agent.findOne({
+      _id: req.params.id,
+      owner: req.user!._id
+    }).populate('owner', 'username email');
 
-    const agent = await Agent.findById(id).populate('owner', 'username email');
-    
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: 'Agent not found',
+        error: { message: 'Agent not found' }
       });
     }
 
-    // Check if user has access to this agent
-    if (agent.owner._id.toString() !== userId.toString() && !agent.isPublic) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    res.json({
+    return res.json({
       success: true,
-      data: agent,
+      data: agent
     });
   } catch (error) {
-    console.error('Get agent error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Failed to fetch agent',
+      error: { message: 'Internal server error' }
     });
   }
 });
 
-// Create new agent
+// Create agent
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const userId = req.user?._id as string;
     const validatedData = CreateAgentSchema.parse(req.body);
-
+    
     const agent = new Agent({
       ...validatedData,
-      owner: userId,
+      owner: req.user!._id
     });
-
+    
     await agent.save();
     await agent.populate('owner', 'username email');
 
-    res.status(201).json({
+    return res.status(201).json({
       success: true,
-      data: agent,
-      message: 'Agent created successfully',
+      data: agent
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors: error.errors,
+        error: { 
+          message: 'Validation error',
+          details: error.errors
+        }
       });
     }
-
-    console.error('Create agent error:', error);
-    res.status(500).json({
+    
+    return res.status(500).json({
       success: false,
-      message: 'Failed to create agent',
+      error: { message: 'Internal server error' }
     });
   }
 });
@@ -250,48 +216,39 @@ router.post('/', async (req: Request, res: Response) => {
 // Update agent
 router.put('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const userId = req.user?._id as string;
     const validatedData = UpdateAgentSchema.parse(req.body);
-
-    const agent = await Agent.findById(id);
     
+    const agent = await Agent.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user!._id },
+      validatedData,
+      { new: true }
+    ).populate('owner', 'username email');
+
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: 'Agent not found',
+        error: { message: 'Agent not found' }
       });
     }
 
-    if (agent.owner.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    Object.assign(agent, validatedData);
-    await agent.save();
-    await agent.populate('owner', 'username email');
-
-    res.json({
+    return res.json({
       success: true,
-      data: agent,
-      message: 'Agent updated successfully',
+      data: agent
     });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({
         success: false,
-        message: 'Validation error',
-        errors: error.errors,
+        error: { 
+          message: 'Validation error',
+          details: error.errors
+        }
       });
     }
-
-    console.error('Update agent error:', error);
-    res.status(500).json({
+    
+    return res.status(500).json({
       success: false,
-      message: 'Failed to update agent',
+      error: { message: 'Internal server error' }
     });
   }
 });
@@ -299,46 +256,43 @@ router.put('/:id', async (req: Request, res: Response) => {
 // Publish agent
 router.post('/:id/publish', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const userId = req.user?._id as string;
-
-    const agent = await Agent.findById(id) as IAgent;
+    const validatedData = PublishAgentSchema.parse(req.body);
     
+    const agent = await Agent.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user!._id },
+      {
+        ...validatedData,
+        publishStatus: PublishStatus.PUBLISHED,
+        publishedAt: new Date()
+      },
+      { new: true }
+    ).populate('owner', 'username email');
+
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: 'Agent not found',
+        error: { message: 'Agent not found' }
       });
     }
 
-    if (agent.owner.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    // Check if agent has required fields for publishing
-    if (!agent.name || !agent.description || !agent.prompt) {
-      return res.status(400).json({
-        success: false,
-        message: 'Agent must have name, description, and prompt to be published',
-      });
-    }
-
-    await agent.publish();
-    await agent.populate('owner', 'username email');
-
-    res.json({
+    return res.json({
       success: true,
-      data: agent,
-      message: 'Agent published successfully',
+      data: agent
     });
   } catch (error) {
-    console.error('Publish agent error:', error);
-    res.status(500).json({
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({
+        success: false,
+        error: { 
+          message: 'Validation error',
+          details: error.errors
+        }
+      });
+    }
+    
+    return res.status(500).json({
       success: false,
-      message: 'Failed to publish agent',
+      error: { message: 'Internal server error' }
     });
   }
 });
@@ -346,38 +300,31 @@ router.post('/:id/publish', async (req: Request, res: Response) => {
 // Unpublish agent
 router.post('/:id/unpublish', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const userId = req.user?._id as string;
+    const agent = await Agent.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user!._id },
+      {
+        publishStatus: PublishStatus.DRAFT,
+        isPublic: false,
+        publishedAt: null
+      },
+      { new: true }
+    ).populate('owner', 'username email');
 
-    const agent = await Agent.findById(id) as IAgent;
-    
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: 'Agent not found',
+        error: { message: 'Agent not found' }
       });
     }
 
-    if (agent.owner.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    await agent.unpublish();
-    await agent.populate('owner', 'username email');
-
-    res.json({
+    return res.json({
       success: true,
-      data: agent,
-      message: 'Agent unpublished successfully',
+      data: agent
     });
   } catch (error) {
-    console.error('Unpublish agent error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Failed to unpublish agent',
+      error: { message: 'Internal server error' }
     });
   }
 });
@@ -385,38 +332,30 @@ router.post('/:id/unpublish', async (req: Request, res: Response) => {
 // Archive agent
 router.post('/:id/archive', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const userId = req.user?._id as string;
+    const agent = await Agent.findOneAndUpdate(
+      { _id: req.params.id, owner: req.user!._id },
+      {
+        publishStatus: PublishStatus.ARCHIVED,
+        isPublic: false
+      },
+      { new: true }
+    ).populate('owner', 'username email');
 
-    const agent = await Agent.findById(id) as IAgent;
-    
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: 'Agent not found',
+        error: { message: 'Agent not found' }
       });
     }
 
-    if (agent.owner.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    await agent.archive();
-    await agent.populate('owner', 'username email');
-
-    res.json({
+    return res.json({
       success: true,
-      data: agent,
-      message: 'Agent archived successfully',
+      data: agent
     });
   } catch (error) {
-    console.error('Archive agent error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Failed to archive agent',
+      error: { message: 'Internal server error' }
     });
   }
 });
@@ -424,82 +363,57 @@ router.post('/:id/archive', async (req: Request, res: Response) => {
 // Delete agent
 router.delete('/:id', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const userId = req.user?._id as string;
+    const agent = await Agent.findOneAndDelete({
+      _id: req.params.id,
+      owner: req.user!._id
+    });
 
-    const agent = await Agent.findById(id);
-    
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: 'Agent not found',
+        error: { message: 'Agent not found' }
       });
     }
 
-    if (agent.owner.toString() !== userId.toString()) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    await Agent.findByIdAndDelete(id);
-
-    res.json({
+    return res.json({
       success: true,
-      message: 'Agent deleted successfully',
+      data: { message: 'Agent deleted successfully' }
     });
   } catch (error) {
-    console.error('Delete agent error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Failed to delete agent',
+      error: { message: 'Internal server error' }
     });
   }
 });
 
-// Use agent (increment usage count)
+// Track agent usage
 router.post('/:id/use', async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
-    const userId = req.user?._id as string;
+    const agent = await Agent.findByIdAndUpdate(
+      req.params.id,
+      { 
+        $inc: { usageCount: 1 },
+        lastUsedAt: new Date()
+      },
+      { new: true }
+    );
 
-    const agent = await Agent.findById(id) as IAgent;
-    
     if (!agent) {
       return res.status(404).json({
         success: false,
-        message: 'Agent not found',
+        error: { message: 'Agent not found' }
       });
     }
 
-    // Check if user has access to this agent
-    if (agent.owner.toString() !== userId.toString() && !agent.isPublic) {
-      return res.status(403).json({
-        success: false,
-        message: 'Access denied',
-      });
-    }
-
-    // Only allow usage of published agents (unless owner)
-    if (agent.owner.toString() !== userId.toString() && agent.publishStatus !== PublishStatus.PUBLISHED) {
-      return res.status(403).json({
-        success: false,
-        message: 'Agent is not published',
-      });
-    }
-
-    await agent.incrementUsage();
-
-    res.json({
+    return res.json({
       success: true,
-      message: 'Agent usage recorded',
+      data: { message: 'Usage tracked successfully' }
     });
   } catch (error) {
-    console.error('Use agent error:', error);
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: 'Failed to record agent usage',
+      error: { message: 'Internal server error' }
     });
   }
 });

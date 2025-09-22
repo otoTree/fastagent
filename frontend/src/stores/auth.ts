@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { authApi } from '@/lib/auth';
-import { User, LoginInput, CreateUserInput, AuthResponse } from '@/types';
+import { api } from '@/lib/api';
+import { User, LoginInput, CreateUserInput } from '@/types';
 import { toast } from 'sonner';
 
 interface AuthState {
@@ -36,8 +36,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true });
           
-          const response = await authApi.login(credentials);
-          const { user, token } = response;
+          const response = await api.post('/auth/login', credentials);
+          const { user, token } = response.data.data;
           
           set({
             user,
@@ -60,8 +60,8 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true });
           
-          const response = await authApi.register(userData);
-          const { user, token } = response;
+          const response = await api.post('/auth/register', userData);
+          const { user, token } = response.data.data;
           
           set({
             user,
@@ -84,7 +84,7 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true });
           
-          await authApi.logout();
+          await api.post('/auth/logout');
           
           set({
             user: null,
@@ -118,8 +118,8 @@ export const useAuthStore = create<AuthState>()(
           
           set({ isLoading: true });
           
-          const response = await authApi.getCurrentUser();
-          const { user } = response;
+          const response = await api.get('/auth/me');
+          const { user } = response.data.data;
           
           set({
             user,

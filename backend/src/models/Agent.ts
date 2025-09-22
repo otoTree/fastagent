@@ -93,7 +93,6 @@ const agentSchema = new Schema<IAgent>({
   modelName: {
     type: String,
     required: true,
-    enum: ['gpt-3.5-turbo', 'gpt-4', 'gpt-4-turbo', 'claude-3-sonnet', 'claude-3-opus'],
     default: 'gpt-3.5-turbo',
   },
   temperature: {

@@ -2,17 +2,20 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, FileText, BarChart3, Settings } from "lucide-react";
+import { Bot, FileText, BarChart3, Settings, Cpu } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { useAuthStore } from "@/stores/auth";
+import { statsApi } from "@/services/api";
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, isAuthenticated, isLoading, logout, token } = useAuthStore();
   const [agentCount, setAgentCount] = useState<number>(0);
+  const [projectCount, setProjectCount] = useState<number>(0);
+  const [monthlyUsage, setMonthlyUsage] = useState<number>(0);
   const [loadingStats, setLoadingStats] = useState(true);
 
   useEffect(() => {
@@ -22,37 +25,27 @@ export default function DashboardPage() {
     }
     
     if (isAuthenticated && token) {
-      fetchAgentCount();
+      fetchStats();
     }
   }, [isAuthenticated, isLoading, router, token]);
 
-  const fetchAgentCount = async () => {
+  const fetchStats = async () => {
+    setLoadingStats(true);
     try {
-      setLoadingStats(true);
-      const response = await fetch('http://localhost:4001/api/agents?limit=1', {
-        headers: {
-          "Authorization": `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setAgentCount(data.data.pagination.total || 0);
-      } else {
-        console.error("Failed to fetch agent count");
+      const response = await statsApi.getUserStats();
+      if (response.success && response.data) {
+        setAgentCount(response.data.totalAgents);
+        setProjectCount(response.data.totalProjects);
+        setMonthlyUsage(response.data.monthlyTriggers?.length || 0);
       }
     } catch (error) {
-      console.error("Error fetching agent count:", error);
+      console.error('获取统计数据失败:', error);
     } finally {
       setLoadingStats(false);
     }
   };
 
-  const handleLogout = async () => {
-    await logout();
-    router.push("/");
-  };
+
 
   if (isLoading) {
     return (
@@ -107,15 +100,24 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
           
-          <Card>
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/projects')}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">项目数量</CardTitle>
               <FileText className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
+              <div className="text-2xl font-bold">
+                {loadingStats ? (
+                  <div className="animate-pulse bg-gray-200 h-8 w-8 rounded"></div>
+                ) : (
+                  projectCount
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
-                暂无项目
+                点击管理项目
               </p>
             </CardContent>
           </Card>
@@ -126,7 +128,13 @@ export default function DashboardPage() {
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">0</div>
+              <div className="text-2xl font-bold">
+                {loadingStats ? (
+                  <div className="animate-pulse bg-gray-200 h-8 w-8 rounded"></div>
+                ) : (
+                  monthlyUsage
+                )}
+              </div>
               <p className="text-xs text-muted-foreground">
                 API调用次数
               </p>
@@ -152,7 +160,19 @@ export default function DashboardPage() {
                  <Bot className="h-4 w-4 mr-2" />
                  管理智能体
                </Button>
-               <Button className="w-full justify-start" variant="outline">
+               <Button 
+                 className="w-full justify-start" 
+                 variant="outline"
+                 onClick={() => router.push('/model-configs')}
+               >
+                 <Cpu className="h-4 w-4 mr-2" />
+                 模型配置
+               </Button>
+               <Button 
+                 className="w-full justify-start" 
+                 variant="outline"
+                 onClick={() => router.push('/projects/create')}
+               >
                  <FileText className="h-4 w-4 mr-2" />
                  新建项目
                </Button>

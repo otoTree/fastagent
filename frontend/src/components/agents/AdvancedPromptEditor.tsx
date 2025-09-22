@@ -176,7 +176,7 @@ const AdvancedPromptEditor: React.FC<AdvancedPromptEditorProps> = ({
         if (agent.name.toLowerCase().includes(query)) {
           agents.push({
             type: 'agent',
-            name: agent.name,
+            name: `agent.${agent.name}`,
             displayName: agent.name,
             description: agent.description,
             id: `agent-${agent._id}`
@@ -190,7 +190,7 @@ const AdvancedPromptEditor: React.FC<AdvancedPromptEditorProps> = ({
         if (toolName.toLowerCase().includes(query)) {
           tools.push({
             type: 'tool',
-            name: toolName,
+            name: `tool.${toolName}`,
             displayName: toolName,
             description: tool.description?.['zh-CN'] || tool.description?.en,
             id: `tool-${tool.id}`
