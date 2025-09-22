@@ -1,9 +1,11 @@
 import express from 'express';
+import mongoose from 'mongoose';
 import { authenticate } from '@/middleware/auth';
 import { Trigger, CreateTriggerSchema, UpdateTriggerSchema, WebhookConfig } from '@/models/Trigger';
 import { WebhookExecutionLog } from '@/models/WebhookExecutionLog';
 import { Agent } from '@/models/Agent';
 import { ApiResponse, PaginationQuery } from '@/types';
+import { RedisTaskService } from '@/services/redisTaskService';
 import crypto from 'crypto';
 import axios from 'axios';
 import { z } from 'zod';
@@ -430,15 +432,30 @@ router.post('/:id/regenerate-key', authenticate, async (req: express.Request, re
 // Webhook trigger endpoint
 router.all('/trigger/:id', verifyApiKey, async (req, res) => {
   try {
-    const trigger = req.webhookTrigger!;
-    const startTime = Date.now();
-    
-    // Increment trigger count
-    await trigger.incrementTriggerCount();
-    await trigger.updateLastTriggered();
+    // 验证API密钥
+    const apiKey = req.headers['x-api-key'] as string;
+    if (!apiKey) {
+      return res.status(401).json({
+        success: false,
+        error: { message: 'API key is required' }
+      });
+    }
 
-    // Get agent
-    const agent = await Agent.findById(trigger.agentId);
+    // 查找触发器
+    const trigger = await Trigger.findOne({ 
+      _id: req.params.id,
+      type: 'webhook',
+      apiKey: apiKey
+    }).populate('agentId');
+
+    if (!trigger) {
+      return res.status(404).json({
+        success: false,
+        error: { message: 'Webhook not found or invalid API key' }
+      });
+    }
+
+    const agent = trigger.agentId as any;
     if (!agent) {
       return res.status(404).json({
         success: false,
@@ -446,51 +463,78 @@ router.all('/trigger/:id', verifyApiKey, async (req, res) => {
       });
     }
 
-    // Process the webhook request
-    const requestData = {
-      method: req.method,
-      headers: req.headers,
-      query: req.query,
-      body: req.body,
-      params: req.params
-    };
+    // 检查Agent是否在线（通过Redis任务服务）
+    const redisUrl = process.env.REDIS_URI || 'redis://localhost:6379';
+    const redisTaskService = new RedisTaskService(redisUrl);
+    await redisTaskService.connect();
+    
+    const isOnline = await redisTaskService.isAgentOnline(agent._id.toString());
+    if (!isOnline) {
+      await redisTaskService.disconnect();
+      return res.status(503).json({
+        success: false,
+        error: { message: 'Agent is currently offline' }
+      });
+    }
 
-    // Here you would integrate with your agent execution logic
-    // For now, we'll return a mock response
-    const responseData = {
-      message: 'Webhook processed successfully',
-      agent: agent.name,
-      timestamp: new Date().toISOString(),
-      requestMethod: req.method
-    };
-
-    const executionTime = Date.now() - startTime;
-
-    // Log the execution
-    const log = new WebhookExecutionLog({
+    // 记录执行日志
+    const execution = new WebhookExecutionLog({
       triggerId: trigger._id,
-      agentId: trigger.agentId,
-      requestData,
-      responseData,
+      agentId: agent._id,
+      requestData: {
+        method: req.method,
+        headers: req.headers,
+        body: req.body,
+        query: req.query,
+        params: req.params
+      },
       statusCode: 200,
-      executionTime,
       success: true
     });
-    await log.save();
 
-    const config = trigger.config as WebhookConfig;
-    
-    // Return response based on format
-    switch (config.responseFormat) {
-      case 'json':
-        return res.json(responseData);
-      case 'text':
-        return res.send(JSON.stringify(responseData));
-      case 'html':
-        return res.send(`<html><body><pre>${JSON.stringify(responseData, null, 2)}</pre></body></html>`);
-      default:
-        return res.json(responseData);
-    }
+    await execution.save();
+
+    // 创建任务并发送到Redis队列
+     const taskId = await redisTaskService.createTask({
+       agentId: agent._id.toString(),
+       triggerType: 'webhook' as any,
+       priority: 'normal' as any,
+       input: {
+         data: req.body,
+         context: {
+           webhook: {
+             method: req.method,
+             headers: req.headers,
+             query: req.query,
+             params: req.params
+           },
+           trigger: {
+              id: (trigger._id as mongoose.Types.ObjectId).toString(),
+              name: trigger.name
+            }
+         }
+       },
+       metadata: {
+         userId: trigger.owner.toString(),
+         projectId: trigger.projectId?.toString(),
+         source: 'webhook',
+         timeout: 30000,
+         maxRetries: 3
+       }
+     });
+
+    await redisTaskService.disconnect();
+
+    return res.json({
+      success: true,
+      data: {
+        executionId: execution._id,
+        taskId,
+        status: 'accepted',
+        message: 'Webhook triggered successfully'
+      }
+    });
+
   } catch (error) {
     const executionTime = Date.now() - Date.now();
     

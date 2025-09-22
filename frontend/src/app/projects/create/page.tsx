@@ -100,8 +100,8 @@ const CreateProjectPage = () => {
           <div>
             <h1 className="text-3xl font-bold">创建项目</h1>
             <p className="text-muted-foreground">
-              创建一个新的项目来管理您的智能体和Webhook触发器
-            </p>
+            创建一个新的项目来管理您的智能体和触发器
+          </p>
           </div>
         </div>
 
@@ -109,8 +109,8 @@ const CreateProjectPage = () => {
           <CardHeader>
             <CardTitle>项目信息</CardTitle>
             <CardDescription>
-              填写项目的基本信息，创建后可以在项目中添加Webhook触发器
-            </CardDescription>
+                填写项目的基本信息，创建后可以在项目中添加触发器
+              </CardDescription>
           </CardHeader>
           <CardContent>
             <Form {...form}>
@@ -204,8 +204,8 @@ const CreateProjectPage = () => {
                           启用项目
                         </FormLabel>
                         <FormDescription>
-                          启用后，项目中的Webhook触发器将可以正常工作
-                        </FormDescription>
+                    启用后，项目中的触发器将可以正常工作
+                  </FormDescription>
                       </div>
                       <FormControl>
                         <Switch

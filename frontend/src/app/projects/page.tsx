@@ -64,9 +64,9 @@ const ProjectsPage = () => {
               <Eye className="mr-2 h-4 w-4" />
               查看详情
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push(`/projects/${project._id}?tab=webhooks`)}>
+            <DropdownMenuItem onClick={() => router.push(`/projects/${project._id}?tab=triggers`)}>
               <Zap className="mr-2 h-4 w-4" />
-              管理触发器
+              触发器
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => router.push(`/projects/${project._id}/edit`)}>
               <Settings className="mr-2 h-4 w-4" />
@@ -108,7 +108,7 @@ const ProjectsPage = () => {
         <div>
           <h1 className="text-3xl font-bold">项目管理</h1>
           <p className="text-muted-foreground">
-            管理您的项目和Webhook触发器
+            管理您的项目和触发器
           </p>
         </div>
       </div>

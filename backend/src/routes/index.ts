@@ -1,42 +1,32 @@
-import { Router } from 'express';
+import express from 'express';
 import authRoutes from './auth';
 import agentRoutes from './agents';
-import modelConfigRoutes from './modelConfigs';
-import webhookRoutes from './webhooks';
-import triggerRoutes from './triggers';
 import projectRoutes from './projects';
+import modelConfigRoutes from './modelConfigs';
+import triggerRoutes from './triggers';
+import webhookRoutes from './webhooks';
 import statsRoutes from './stats';
+import taskRoutes from './tasks';
 
-const router = Router();
+const router = express.Router();
 
-// Health check
+// Health check endpoint
 router.get('/health', (req, res) => {
-  res.json({
-    success: true,
-    message: 'FastAgent API is running',
+  res.json({ 
+    status: 'ok', 
     timestamp: new Date().toISOString(),
+    service: 'fastagent-backend'
   });
 });
 
-// Auth routes
+// Mount routes
 router.use('/auth', authRoutes);
-
-// Agent routes
 router.use('/agents', agentRoutes);
-
-// Model configuration routes
-router.use('/model-configs', modelConfigRoutes);
-
-// Webhook routes (legacy, for backward compatibility)
-router.use('/webhooks', webhookRoutes);
-
-// Trigger routes (new unified trigger system)
-router.use('/triggers', triggerRoutes);
-
-// Project routes
 router.use('/projects', projectRoutes);
-
-// Statistics routes
+router.use('/model-configs', modelConfigRoutes);
+router.use('/triggers', triggerRoutes);
+router.use('/webhooks', webhookRoutes);
 router.use('/stats', statsRoutes);
+router.use('/tasks', taskRoutes);
 
 export default router;

@@ -10,6 +10,7 @@ interface AuthState {
   token: string | null;
   isLoading: boolean;
   isAuthenticated: boolean;
+  isHydrated: boolean;
   
   // Actions
   login: (credentials: LoginInput) => Promise<boolean>;
@@ -19,6 +20,7 @@ interface AuthState {
   setUser: (user: User | null) => void;
   setToken: (token: string | null) => void;
   setLoading: (loading: boolean) => void;
+  setHydrated: (hydrated: boolean) => void;
   clearAuth: () => void;
 }
 
@@ -30,6 +32,7 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isLoading: false,
       isAuthenticated: false,
+      isHydrated: typeof window === 'undefined', // SSR 时为 true，客户端初始为 false
 
       // Actions
       login: async (credentials: LoginInput): Promise<boolean> => {
@@ -155,6 +158,10 @@ export const useAuthStore = create<AuthState>()(
         set({ isLoading: loading });
       },
 
+      setHydrated: (hydrated: boolean) => {
+        set({ isHydrated: hydrated });
+      },
+
       clearAuth: () => {
         set({
           user: null,
@@ -171,6 +178,14 @@ export const useAuthStore = create<AuthState>()(
         token: state.token,
         isAuthenticated: state.isAuthenticated,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (state && typeof window !== 'undefined') {
+          // 使用 setTimeout 确保在下一个事件循环中设置，避免 React 警告
+          setTimeout(() => {
+            state.setHydrated(true);
+          }, 0);
+        }
+      },
     }
   )
 );

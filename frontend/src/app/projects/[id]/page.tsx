@@ -18,9 +18,9 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 
 import { useProjectStore } from '@/stores/projects';
-import { useWebhookStore } from '@/stores/webhooks';
+import { useTriggerStore } from '@/stores/triggers';
 import { useAuthStore } from '@/stores/auth';
-import { Project, WebhookTrigger } from '@/types';
+import { Project, Trigger } from '@/types';
 
 export default function ProjectDetailPage() {
   const router = useRouter();
@@ -43,12 +43,12 @@ export default function ProjectDetailPage() {
   } = useProjectStore();
 
   const {
-    webhooks,
-    loading: webhooksLoading,
-    error: webhooksError,
-    fetchWebhooks,
-    deleteWebhook,
-  } = useWebhookStore();
+    triggers,
+    isLoading: triggersLoading,
+    error: triggersError,
+    fetchTriggers,
+    deleteTrigger,
+  } = useTriggerStore();
 
   // 检查认证状态
   useEffect(() => {
@@ -58,21 +58,17 @@ export default function ProjectDetailPage() {
     }
   }, [isAuthenticated, authLoading, router]);
 
-  console.log('webhooks:',webhooks)
-
   useEffect(() => {
     if (projectId && isAuthenticated) {
       fetchProject(projectId);
-      // 获取该项目的所有webhook（通过agentId过滤）
-      if (currentProject?.agentId) {
-        fetchWebhooks({ agentId: currentProject.agentId });
-      }
+      // 获取该项目的所有触发器
+      fetchTriggers(projectId);
     }
-  }, [projectId, currentProject?.agentId, fetchProject, fetchWebhooks, isAuthenticated]);
+  }, [projectId, fetchProject, fetchTriggers, isAuthenticated]);
 
   const handleDeleteProject = async () => {
     if (!currentProject) return;
-    if (!confirm('确定要删除这个项目吗？这将同时删除项目中的所有Webhook触发器。')) return;
+    if (!confirm('确定要删除这个项目吗？这将同时删除项目中的所有触发器。')) return;
     
     try {
       await deleteProject(currentProject._id);
@@ -83,28 +79,26 @@ export default function ProjectDetailPage() {
     }
   };
 
-  const handleDeleteWebhook = async (webhookId: string) => {
-    if (!confirm('确定要删除这个Webhook触发器吗？')) return;
+  const handleDeleteTrigger = async (triggerId: string) => {
+    if (!confirm('确定要删除这个触发器吗？')) return;
     
     try {
-      await deleteWebhook(webhookId);
-      toast.success('Webhook触发器删除成功');
-      // 重新获取webhook列表
-      if (currentProject?.agentId) {
-        fetchWebhooks({ agentId: currentProject.agentId });
-      }
+      await deleteTrigger(triggerId);
+      toast.success('触发器删除成功');
+      // 重新获取触发器列表
+      fetchTriggers(projectId);
     } catch (error) {
-      toast.error('删除Webhook触发器失败');
+      toast.error('删除触发器失败');
     }
   };
 
-  const WebhookCard = ({ webhook }: { webhook: WebhookTrigger }) => (
+  const TriggerCard = ({ trigger }: { trigger: Trigger }) => (
     <Card className="hover:shadow-md transition-shadow">
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
         <div className="space-y-1">
-          <CardTitle className="text-base">{webhook.name}</CardTitle>
+          <CardTitle className="text-base">{trigger.name}</CardTitle>
           <CardDescription className="text-sm">
-            {webhook.description || '暂无描述'}
+            {trigger.description || '暂无描述'}
           </CardDescription>
         </div>
         <DropdownMenu>
@@ -114,16 +108,16 @@ export default function ProjectDetailPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => router.push(`/projects/webhooks/${webhook._id}`)}>
+            <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/triggers/${trigger._id}`)}>
               <Eye className="mr-2 h-4 w-4" />
               查看详情
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => router.push(`/projects/webhooks/${webhook._id}/edit`)}>
+            <DropdownMenuItem onClick={() => router.push(`/projects/${projectId}/triggers/${trigger._id}/edit`)}>
               <Settings className="mr-2 h-4 w-4" />
               编辑配置
             </DropdownMenuItem>
             <DropdownMenuItem 
-              onClick={() => handleDeleteWebhook(webhook._id)}
+              onClick={() => handleDeleteTrigger(trigger._id)}
               className="text-red-600"
             >
               <Trash2 className="mr-2 h-4 w-4" />
@@ -135,14 +129,14 @@ export default function ProjectDetailPage() {
       <CardContent>
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <Badge variant={webhook.isActive ? 'default' : 'secondary'}>
-              {webhook.isActive ? '启用' : '禁用'}
+            <Badge variant={trigger.isActive ? 'default' : 'secondary'}>
+              {trigger.isActive ? '启用' : '禁用'}
             </Badge>
-            <Badge variant="outline">{webhook.httpMethod}</Badge>
+            <Badge variant="outline">{trigger.type}</Badge>
           </div>
           <div className="text-xs text-muted-foreground">
-            <div>触发次数: {webhook.triggerCount || 0}</div>
-            <div>创建时间: {new Date(webhook.createdAt).toLocaleDateString()}</div>
+            <div>触发次数: {trigger.triggerCount || 0}</div>
+            <div>创建时间: {new Date(trigger.createdAt).toLocaleDateString()}</div>
           </div>
         </div>
       </CardContent>
@@ -258,11 +252,11 @@ export default function ProjectDetailPage() {
           
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Webhook触发器</CardTitle>
+              <CardTitle className="text-sm font-medium">触发器</CardTitle>
               <Globe className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{webhooks.length}</div>
+              <div className="text-2xl font-bold">{triggers.length}</div>
               <p className="text-xs text-muted-foreground">
                 个触发器
               </p>
@@ -286,7 +280,7 @@ export default function ProjectDetailPage() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
           <TabsList>
             <TabsTrigger value="overview">概览</TabsTrigger>
-            <TabsTrigger value="webhooks">Webhook触发器</TabsTrigger>
+            <TabsTrigger value="triggers">触发器</TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
@@ -325,28 +319,28 @@ export default function ProjectDetailPage() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="webhooks" className="space-y-4">
+          <TabsContent value="triggers" className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-medium">Webhook触发器</h3>
+                <h3 className="text-lg font-medium">触发器</h3>
                 <p className="text-sm text-muted-foreground">
-                  管理此项目的Webhook触发器
+                  管理此项目的触发器
                 </p>
               </div>
               <Button 
-                onClick={() => router.push(`/projects/${projectId}/webhooks/create`)}
+                onClick={() => router.push(`/projects/${projectId}/triggers/create`)}
                 className="gap-2"
               >
                 <Plus className="h-4 w-4" />
-                创建Webhook
+                创建触发器
               </Button>
             </div>
 
-            {webhooksError && (
-              <div className="text-red-600 text-sm">{webhooksError}</div>
+            {triggersError && (
+              <div className="text-red-600 text-sm">{triggersError}</div>
             )}
 
-            {webhooksLoading ? (
+            {triggersLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {[...Array(3)].map((_, i) => (
                   <Card key={i} className="animate-pulse">
@@ -362,21 +356,21 @@ export default function ProjectDetailPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {webhooks.map((webhook) => (
-                  <WebhookCard key={webhook._id} webhook={webhook} />
+                {triggers.map((trigger) => (
+                  <TriggerCard key={trigger._id} trigger={trigger} />
                 ))}
               </div>
             )}
 
-            {webhooks.length === 0 && !webhooksLoading && (
+            {triggers.length === 0 && !triggersLoading && (
               <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">还没有创建任何Webhook触发器</p>
+                <p className="text-muted-foreground mb-4">还没有创建任何触发器</p>
                 <Button 
-                  onClick={() => router.push(`/projects/${projectId}/webhooks/create`)}
+                  onClick={() => router.push(`/projects/${projectId}/triggers/create`)}
                   className="gap-2"
                 >
                   <Plus className="h-4 w-4" />
-                  创建第一个Webhook
+                  创建第一个触发器
                 </Button>
               </div>
             )}
