@@ -126,6 +126,7 @@ router.get('/', authenticate, async (req: express.Request, res: express.Response
 // Get trigger by ID
 router.get('/:id', authenticate, async (req: express.Request, res: express.Response) => {
   try {
+    console.log(req)
     const trigger = await Trigger.findOne({
       _id: req.params.id,
       owner: req.user!._id

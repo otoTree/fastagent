@@ -2,13 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bot, FileText, BarChart3, Settings, Cpu } from "lucide-react";
+import { Bot, FileText, BarChart3, Settings, Cpu, Activity } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 import { useAuthStore } from "@/stores/auth";
-import { statsApi } from "@/services/api";
+import { statsApi, triggerLogApi } from "@/services/api";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -32,11 +32,21 @@ export default function DashboardPage() {
   const fetchStats = async () => {
     setLoadingStats(true);
     try {
+      // 获取基础统计数据
       const response = await statsApi.getUserStats();
       if (response.success && response.data) {
         setAgentCount(response.data.totalAgents);
         setProjectCount(response.data.totalProjects);
-        setMonthlyUsage(response.data.monthlyTriggers?.length || 0);
+      }
+
+      // 获取本月触发器调用量统计（使用当前月份的天数）
+      const currentDate = new Date();
+      const daysInMonth = currentDate.getDate(); // 当前月份已过去的天数
+      
+      const triggerStatsResponse = await triggerLogApi.getStats();
+      
+      if (triggerStatsResponse.success && triggerStatsResponse.data) {
+        setMonthlyUsage(triggerStatsResponse.data.totalCalls);
       }
     } catch (error) {
       console.error('获取统计数据失败:', error);
@@ -122,7 +132,10 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
           
-          <Card>
+          <Card 
+            className="cursor-pointer hover:shadow-md transition-shadow"
+            onClick={() => router.push('/trigger-logs')}
+          >
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">本月使用量</CardTitle>
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -136,7 +149,7 @@ export default function DashboardPage() {
                 )}
               </div>
               <p className="text-xs text-muted-foreground">
-                API调用次数
+                点击查看触发器日志
               </p>
             </CardContent>
           </Card>
@@ -175,6 +188,14 @@ export default function DashboardPage() {
                >
                  <FileText className="h-4 w-4 mr-2" />
                  新建项目
+               </Button>
+               <Button 
+                 className="w-full justify-start" 
+                 variant="outline"
+                 onClick={() => router.push('/trigger-logs')}
+               >
+                 <Activity className="h-4 w-4 mr-2" />
+                 触发器日志
                </Button>
               <Button className="w-full justify-start" variant="outline">
                 <Settings className="h-4 w-4 mr-2" />

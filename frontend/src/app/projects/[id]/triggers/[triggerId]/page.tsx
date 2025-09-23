@@ -59,7 +59,6 @@ export default function TriggerDetailPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
           <p className="mt-2 text-slate-600">加载中...</p>
         </div>
       </div>
@@ -161,7 +160,7 @@ export default function TriggerDetailPage() {
   }
 
   const webhookUrl = currentTrigger.type === 'webhook' 
-    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api'}/triggers/${currentTrigger._id}/trigger`
+    ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001'}/webhooks/trigger/${currentTrigger._id}`
     : null;
 
   return (
@@ -358,7 +357,7 @@ export default function TriggerDetailPage() {
               <CardHeader>
                 <CardTitle>Webhook URL</CardTitle>
                 <CardDescription>
-                  使用此URL来触发webhook，请在请求头中包含API密钥
+                  使用此URL来触发webhook，请在请求头中包含x-api-key
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -385,8 +384,8 @@ export default function TriggerDetailPage() {
                 <CardHeader>
                   <CardTitle>API密钥</CardTitle>
                   <CardDescription>
-                    在请求头中使用 X-API-Key 包含此密钥
-                  </CardDescription>
+                  在请求头中使用 x-api-key 包含此密钥
+                </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="flex gap-2">
@@ -427,7 +426,7 @@ export default function TriggerDetailPage() {
                   <pre className="text-sm font-mono whitespace-pre-wrap">
                     {`curl -X ${(currentTrigger.config as WebhookConfig)?.httpMethod || 'POST'} \\
   -H "Content-Type: application/json" \\
-  -H "X-API-Key: ${showApiKey ? currentTrigger.apiKey : 'YOUR_API_KEY'}" \\
+  -H "x-api-key: ${showApiKey ? currentTrigger.apiKey : 'YOUR_API_KEY'}" \\
   -d '{"message": "test"}' \\
   ${webhookUrl}`}
                   </pre>

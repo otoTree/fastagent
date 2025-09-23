@@ -32,7 +32,7 @@ export const useAuthStore = create<AuthState>()(
       token: null,
       isLoading: false,
       isAuthenticated: false,
-      isHydrated: typeof window === 'undefined', // SSR 时为 true，客户端初始为 false
+      isHydrated: false, // 统一初始化为 false，避免 SSR/CSR 不匹配
 
       // Actions
       login: async (credentials: LoginInput): Promise<boolean> => {
@@ -180,10 +180,8 @@ export const useAuthStore = create<AuthState>()(
       }),
       onRehydrateStorage: () => (state) => {
         if (state && typeof window !== 'undefined') {
-          // 使用 setTimeout 确保在下一个事件循环中设置，避免 React 警告
-          setTimeout(() => {
-            state.setHydrated(true);
-          }, 0);
+          // 立即设置 hydrated 状态，避免延迟导致的闪烁
+          state.setHydrated(true);
         }
       },
     }

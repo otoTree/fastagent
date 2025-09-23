@@ -3,9 +3,10 @@ import mongoose from 'mongoose';
 import { authenticate } from '@/middleware/auth';
 import { Trigger, CreateTriggerSchema, UpdateTriggerSchema, WebhookConfig } from '@/models/Trigger';
 import { WebhookExecutionLog } from '@/models/WebhookExecutionLog';
+import { TriggerLog, TriggerLogStatus } from '@/models/TriggerLog';
 import { Agent } from '@/models/Agent';
 import { ApiResponse, PaginationQuery } from '@/types';
-import { RedisTaskService } from '@/services/redisTaskService';
+import RedisTaskServiceSingleton from '@/services/redisTaskServiceSingleton';
 import crypto from 'crypto';
 import axios from 'axios';
 import { z } from 'zod';
@@ -463,24 +464,17 @@ router.all('/trigger/:id', verifyApiKey, async (req, res) => {
       });
     }
 
-    // 检查Agent是否在线（通过Redis任务服务）
-    const redisUrl = process.env.REDIS_URI || 'redis://localhost:6379';
-    const redisTaskService = new RedisTaskService(redisUrl);
-    await redisTaskService.connect();
-    
-    const isOnline = await redisTaskService.isAgentOnline(agent._id.toString());
-    if (!isOnline) {
-      await redisTaskService.disconnect();
-      return res.status(503).json({
-        success: false,
-        error: { message: 'Agent is currently offline' }
-      });
-    }
+    // 获取Redis任务服务实例
+    const redisTaskService = await RedisTaskServiceSingleton.getInstance();
 
     // 记录执行日志
-    const execution = new WebhookExecutionLog({
+    const startTime = new Date();
+    const triggerLog = new TriggerLog({
       triggerId: trigger._id,
       agentId: agent._id,
+      owner: trigger.owner,
+      projectId: trigger.projectId,
+      status: TriggerLogStatus.RUNNING,
       requestData: {
         method: req.method,
         headers: req.headers,
@@ -488,16 +482,21 @@ router.all('/trigger/:id', verifyApiKey, async (req, res) => {
         query: req.query,
         params: req.params
       },
-      statusCode: 200,
-      success: true
+      executionTime: 0, // 初始值，后续会更新
+      httpMethod: req.method,
+      userAgent: req.headers['user-agent'] || '',
+      ipAddress: req.ip || req.connection.remoteAddress || '',
+      headers: req.headers as Record<string, string>,
+      triggeredAt: startTime
     });
 
-    await execution.save();
+    await triggerLog.save();
 
     // 创建任务并发送到Redis队列
      const taskId = await redisTaskService.createTask({
        agentId: agent._id.toString(),
        triggerType: 'webhook' as any,
+       triggerId: (trigger._id as mongoose.Types.ObjectId).toString(),
        priority: 'normal' as any,
        input: {
          data: req.body,
@@ -523,12 +522,10 @@ router.all('/trigger/:id', verifyApiKey, async (req, res) => {
        }
      });
 
-    await redisTaskService.disconnect();
-
     return res.json({
       success: true,
       data: {
-        executionId: execution._id,
+        executionId: triggerLog._id,
         taskId,
         status: 'accepted',
         message: 'Webhook triggered successfully'
@@ -536,12 +533,16 @@ router.all('/trigger/:id', verifyApiKey, async (req, res) => {
     });
 
   } catch (error) {
-    const executionTime = Date.now() - Date.now();
+    const startTime = new Date();
+    const endTime = new Date();
     
     // Log the error
-    const log = new WebhookExecutionLog({
+    const triggerLog = new TriggerLog({
       triggerId: req.webhookTrigger!._id,
       agentId: req.webhookTrigger!.agentId,
+      owner: req.webhookTrigger!.owner,
+      projectId: req.webhookTrigger!.projectId,
+      status: TriggerLogStatus.FAILED,
       requestData: {
         method: req.method,
         headers: req.headers,
@@ -549,12 +550,15 @@ router.all('/trigger/:id', verifyApiKey, async (req, res) => {
         body: req.body
       },
       responseData: { error: 'Internal server error' },
-      statusCode: 500,
-      executionTime,
-      success: false,
+      executionTime: endTime.getTime() - startTime.getTime(),
+      httpMethod: req.method,
+      userAgent: req.headers['user-agent'] || '',
+      ipAddress: req.ip || req.connection.remoteAddress || '',
+      headers: req.headers as Record<string, string>,
+      triggeredAt: startTime,
       errorMessage: error instanceof Error ? error.message : 'Unknown error'
     });
-    await log.save();
+    await triggerLog.save();
 
     return res.status(500).json({
       success: false,

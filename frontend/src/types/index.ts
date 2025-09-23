@@ -67,6 +67,37 @@ export interface Project {
   updatedAt: string;
 }
 
+// 触发器日志类型
+export interface TriggerLog {
+  _id: string;
+  triggerId: string;
+  projectId: string;
+  agentId: string;
+  userId: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'success' | 'error' | 'timeout';
+  requestData?: Record<string, unknown>;
+  responseData?: Record<string, unknown>;
+  errorMessage?: string;
+  startTime: string;
+  endTime?: string;
+  duration?: number;
+  trigger?: {
+    _id: string;
+    name: string;
+    type: string;
+  };
+  project?: {
+    _id: string;
+    name: string;
+  };
+  agent?: {
+    _id: string;
+    name: string;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface CreateProjectInput {
   name: string;
   description?: string;

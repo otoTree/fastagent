@@ -22,7 +22,7 @@ export class RedisTaskService {
 
   // 连接到Redis
   async connect(): Promise<void> {
-    if (this.isConnected) {
+    if (this.isConnected || this.redis.status === 'connecting' || this.redis.status === 'ready') {
       return;
     }
     

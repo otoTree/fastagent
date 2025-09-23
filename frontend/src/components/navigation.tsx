@@ -16,7 +16,7 @@ const Navigation = () => {
     { href: '/', label: '首页' },
     { href: '/discover', label: '发现' },
     { href: '/plugins', label: '插件市场' },
-    { href: '/dashboard', label: '控制台' },
+    { href: '/dashboard', label: '控制台' }
   ];
 
   const handleLogout = async () => {

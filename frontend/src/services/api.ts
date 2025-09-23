@@ -13,7 +13,8 @@ import {
   UpdateWebhookTriggerInput,
   Trigger,
   CreateTriggerInput,
-  UpdateTriggerInput
+  UpdateTriggerInput,
+  TriggerLog
 } from '@/types';
 
 // 创建axios实例
@@ -188,6 +189,56 @@ export const triggerApi = {
   // 手动触发
   triggerManually: async (id: string, data?: Record<string, unknown>): Promise<ApiResponse<Record<string, unknown>>> => {
     const response = await api.post(`/triggers/${id}/trigger`, data);
+    return response.data;
+  },
+};
+
+// 触发器日志API
+export const triggerLogApi = {
+  // 获取触发器日志列表
+  getLogs: async (params?: {
+    page?: number;
+    limit?: number;
+    triggerId?: string;
+    projectId?: string;
+    agentId?: string;
+    status?: string;
+    startDate?: string;
+    endDate?: string;
+    search?: string;
+  }): Promise<ApiResponse<TriggerLog[]>> => {
+    const response = await api.get('/trigger-logs', { params });
+    return response.data;
+  },
+
+  // 获取单个触发器日志详情
+  getLog: async (id: string): Promise<ApiResponse<TriggerLog>> => {
+    const response = await api.get(`/trigger-logs/${id}`);
+    return response.data;
+  },
+
+  // 获取触发器日志统计信息
+  getStats: async (): Promise<ApiResponse<{
+    totalCalls: number;
+    successCalls: number;
+    failedCalls: number;
+    successRate: string;
+    avgExecutionTime: number;
+    statusStats: Record<string, number>;
+    dailyStats: Array<{
+      _id: string;
+      count: number;
+      successCount: number;
+      failedCount: number;
+    }>;
+  }>> => {
+    const response = await api.get('/trigger-logs/stats/overview');
+    return response.data;
+  },
+
+  // 删除触发器日志
+  deleteLog: async (id: string): Promise<ApiResponse<void>> => {
+    const response = await api.delete(`/trigger-logs/${id}`);
     return response.data;
   },
 };

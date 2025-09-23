@@ -1,6 +1,6 @@
 import express from 'express';
 import { authenticate } from '@/middleware/auth';
-import { RedisTaskService } from '@/services/redisTaskService';
+import RedisTaskServiceSingleton from '@/services/redisTaskServiceSingleton';
 import { Agent } from '@/models/Agent';
 import { Project } from '@/models/Project';
 import { TriggerType, TaskPriority } from '@/types/redis';
@@ -9,15 +9,6 @@ import { ApiResponse } from '@/types';
 import { z } from 'zod';
 
 const router = express.Router();
-
-// 初始化Redis任务服务
-const redisUrl = process.env.REDIS_URI || 'redis://localhost:6379';
-const redisTaskService = new RedisTaskService(redisUrl);
-
-// 连接Redis (只在需要时连接)
-redisTaskService.connect().catch(error => {
-  console.error('Redis任务服务初始化失败:', error);
-});
 
 // 创建任务
 router.post('/create', authenticate, async (req: express.Request, res: express.Response) => {
@@ -37,6 +28,9 @@ router.post('/create', authenticate, async (req: express.Request, res: express.R
       } as ApiResponse<null>);
     }
 
+    // 获取Redis任务服务实例
+    const redisTaskService = await RedisTaskServiceSingleton.getInstance();
+    
     // 检查Agent是否在线
     const isOnline = await redisTaskService.isAgentOnline(validatedData.agentId);
     if (!isOnline) {
@@ -64,7 +58,7 @@ router.post('/create', authenticate, async (req: express.Request, res: express.R
     // 创建任务
     const taskId = await redisTaskService.createTask({
       agentId: validatedData.agentId,
-      triggerType: TriggerType.API,
+      triggerType: 'api' as TriggerType,
       priority: validatedData.priority || TaskPriority.NORMAL,
       input: {
         prompt: validatedData.input.prompt,
@@ -75,8 +69,8 @@ router.post('/create', authenticate, async (req: express.Request, res: express.R
         userId: req.user!._id.toString(),
         projectId: validatedData.projectId,
         source: 'api',
-        timeout: validatedData.timeout,
-        maxRetries: validatedData.maxRetries
+        timeout: validatedData.timeout || 30000,
+        maxRetries: validatedData.maxRetries || 3
       }
     });
 
@@ -148,6 +142,9 @@ router.post('/batch-create', authenticate, async (req: express.Request, res: exp
       } as ApiResponse<null>);
     }
 
+    // 获取Redis任务服务实例
+    const redisTaskService = await RedisTaskServiceSingleton.getInstance();
+    
     // 检查Agent是否在线
     const onlineAgents = await redisTaskService.getOnlineAgents();
     const offlineAgents = agentIds.filter(id => !onlineAgents.includes(id));
@@ -228,6 +225,9 @@ router.get('/:taskId/status', authenticate, async (req: express.Request, res: ex
       } as ApiResponse<null>);
     }
 
+    // 获取Redis任务服务实例
+    const redisTaskService = await RedisTaskServiceSingleton.getInstance();
+    
     // 获取任务状态
     const task = await redisTaskService.getTaskStatus(taskId);
     
@@ -277,6 +277,7 @@ router.get('/:taskId/status', authenticate, async (req: express.Request, res: ex
 // 获取任务统计
 router.get('/stats', authenticate, async (req: express.Request, res: express.Response) => {
   try {
+    const redisTaskService = await RedisTaskServiceSingleton.getInstance();
     const stats = await redisTaskService.getTaskStats();
     const queueSize = await redisTaskService.getQueueSize();
     const onlineAgents = await redisTaskService.getOnlineAgents();
@@ -303,9 +304,7 @@ router.get('/stats', authenticate, async (req: express.Request, res: express.Res
 // 清理过期任务（管理员接口）
 router.post('/cleanup', authenticate, async (req: express.Request, res: express.Response) => {
   try {
-    // 这里可以添加管理员权限检查
-    // if (!req.user.isAdmin) { ... }
-    
+    const redisTaskService = await RedisTaskServiceSingleton.getInstance();
     const cleanedCount = await redisTaskService.cleanupExpiredTasks();
 
     res.json({
